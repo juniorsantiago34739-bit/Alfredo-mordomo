@@ -1,10 +1,10 @@
 {
   "name": "alfred-mordomo",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "Alfred, um mordomo virtual com IA, voz, microfone e histórico local.",
+  "description": "Alfred, mordomo virtual gratuito com comandos inteligentes, voz e memoria local.",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=18" },
-  "dependencies": { "dotenv": "^16.4.7", "express": "^5.1.0", "openai": "^5.12.2" }
+  "dependencies": { "express": "^5.1.0" }
 }
