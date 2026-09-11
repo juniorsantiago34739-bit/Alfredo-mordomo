@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alfred — Mordomo Virtual</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#10131a;color:#f5f7fb;display:flex;justify-content:center;min-height:100vh}.app{width:min(900px,100%);padding:20px}.card{background:#181d27;border:1px solid #2b3444;border-radius:18px;overflow:hidden;box-shadow:0 10px 40px #0005}.top{padding:20px;border-bottom:1px solid #2b3444}.top h1{margin:0 0 5px}.top p{margin:0;color:#aab4c5}.chat{height:60vh;min-height:400px;overflow:auto;padding:20px}.msg{max-width:80%;padding:12px 15px;margin:10px 0;border-radius:14px;white-space:pre-wrap;line-height:1.45}.user{margin-left:auto;background:#315c9b}.assistant{background:#252c38}.composer{display:flex;gap:8px;padding:14px;border-top:1px solid #2b3444}.composer textarea{flex:1;resize:none;border:1px solid #374255;border-radius:12px;background:#0f131a;color:#fff;padding:12px;min-height:48px}.btn{border:0;border-radius:12px;padding:0 16px;background:#3d6fd1;color:#fff;font-weight:700;cursor:pointer}.btn.secondary{background:#2b3444}.status{font-size:12px;color:#93a1b5;margin-top:8px}
+</style></head>
+<body><main class="app"><section class="card"><header class="top"><h1>🤵 Alfred</h1><p>Seu mordomo virtual</p><div id="status" class="status">Pronto.</div></header><div id="chat" class="chat"></div><div class="composer"><button id="mic" class="btn secondary" title="Microfone">🎙️</button><textarea id="input" placeholder="Fale com Alfred..." rows="1"></textarea><button id="send" class="btn">Enviar</button></div></section></main>
+<script>
+const chat=document.getElementById('chat'), input=document.getElementById('input'), send=document.getElementById('send'), mic=document.getElementById('mic'), statusEl=document.getElementById('status');
+let history=JSON.parse(localStorage.getItem('alfred_history')||'[]');
+function render(){chat.innerHTML='';history.forEach(m=>{const d=document.createElement('div');d.className='msg '+m.role;d.textContent=m.content;chat.appendChild(d)});chat.scrollTop=chat.scrollHeight}
+function save(){localStorage.setItem('alfred_history',JSON.stringify(history.slice(-30)))}
+function add(role,content){history.push({role,content});save();render()}
+if(!history.length)add('assistant','Olá! Sou Alfred. Como posso ajudar?');else render();
+async function ask(){const text=input.value.trim();if(!text)return;input.value='';add('user',text);statusEl.textContent='Alfred está pensando...';send.disabled=true;try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history.slice(-12)})});const data=await r.json();if(!r.ok)throw new Error(data.error||'Erro');add('assistant',data.reply);speak(data.reply);statusEl.textContent='Pronto.'}catch(e){add('assistant','Não consegui falar com a IA agora. '+e.message);statusEl.textContent='Verifique a configuração do servidor.'}finally{send.disabled=false;input.focus()}}
+send.onclick=ask;input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask()}});
+function speak(t){if('speechSynthesis' in window){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='pt-BR';speechSynthesis.speak(u)}}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(SR){const rec=new SR();rec.lang='pt-BR';rec.interimResults=false;mic.onclick=()=>{statusEl.textContent='Ouvindo...';rec.start()};rec.onresult=e=>{input.value=e.results[0][0].transcript;statusEl.textContent='Pronto.';ask()};rec.onerror=()=>statusEl.textContent='Microfone indisponível.'}else mic.disabled=true;
+</script></body></html>
