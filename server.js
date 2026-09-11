@@ -4,6 +4,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const requests = new Map();
+const memory = new Map();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '128kb' }));
@@ -16,9 +17,14 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, mode: 'free-local', version: '3.0' }));
+const AI_KEY = process.env.OPENROUTER_API_KEY || '';
+const AI_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free';
 
-const memory = new Map();
+app.get('/api/health', (req, res) => res.json({
+  ok: true,
+  mode: AI_KEY ? 'external-free' : 'free-local',
+  version: '4.0'
+}));
 
 function normalize(s) {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -49,44 +55,65 @@ function safeCalc(raw) {
   } catch (_) { return null; }
 }
 
-function makeReply(text, session) {
+function localReply(text, session) {
   const t = normalize(text);
   const m = rememberFacts(text, session);
-
-  if (/^(oi|ola|oie|e ai|fala|bom dia|boa tarde|boa noite)\b/.test(t)) {
-    return m.name ? `Olá, ${m.name}! 🤵 É um prazer atendê-lo novamente. Como posso ajudar?` : 'Olá! 🤵 Sou Alfred, seu mordomo virtual. Como posso ajudar?';
-  }
-  if (t.includes('quem e voce') || t.includes('o que voce faz') || t.includes('o que sabe fazer')) {
-    return 'Sou Alfred, seu mordomo virtual. Posso conversar, lembrar informações desta sessão, fazer cálculos, informar data e hora, contar piadas, ajudar nos estudos, explicar tecnologia e orientar você em vários assuntos. 🧠';
-  }
-  if (t.includes('meu nome') || t.includes('como eu me chamo')) {
-    return m.name ? `Seu nome é ${m.name}. 🤵` : 'Você ainda não me disse seu nome. Pode dizer: “meu nome é ...”.';
-  }
-  if (t.includes('onde eu moro') || t.includes('minha cidade')) {
-    return m.city ? `Você me disse que mora em ${m.city}.` : 'Você ainda não me informou sua cidade.';
-  }
+  if (/^(oi|ola|oie|e ai|fala|bom dia|boa tarde|boa noite)\b/.test(t)) return m.name ? `Olá, ${m.name}! 🤵 É um prazer atendê-lo novamente. Como posso ajudar?` : 'Olá! 🤵 Sou Alfred, seu mordomo virtual. Como posso ajudar?';
+  if (t.includes('quem e voce') || t.includes('o que voce faz') || t.includes('o que sabe fazer')) return 'Sou Alfred, seu mordomo virtual. Agora posso usar uma IA externa gratuita quando ela estiver configurada e também tenho um modo local de emergência. 🧠';
+  if (t.includes('meu nome') || t.includes('como eu me chamo')) return m.name ? `Seu nome é ${m.name}. 🤵` : 'Você ainda não me disse seu nome. Pode dizer: “meu nome é ...”.';
+  if (t.includes('onde eu moro') || t.includes('minha cidade')) return m.city ? `Você me disse que mora em ${m.city}.` : 'Você ainda não me informou sua cidade.';
   if (t.includes('hora')) return `Agora são ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. ⏰`;
   if (t.includes('data') || t.includes('que dia') || t.includes('hoje')) return `Hoje é ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}. 📅`;
   if (t.includes('obrigad') || t.includes('valeu')) return 'Sempre às ordens! 🤵✨';
   if (t.includes('piada')) return 'Por que o computador foi ao médico? Porque estava com um vírus! 😄';
-  if (t.includes('motivacao') || t.includes('desanimado') || t.includes('desanimo')) return 'Vamos por partes. Escolha uma tarefa pequena, comece por 5 minutos e avance um passo de cada vez. Você não precisa resolver tudo de uma vez. 💪';
+  if (t.includes('motivacao') || t.includes('desanimado') || t.includes('desanimo')) return 'Vamos por partes. Escolha uma tarefa pequena, comece por 5 minutos e avance um passo de cada vez. 💪';
   if (t.includes('estudar') || t.includes('estudo') || t.includes('prova')) return 'Claro! Posso montar um resumo, explicar um assunto de forma simples, criar perguntas de treino ou montar um plano de estudos. 📚';
-  if (t.includes('tecnologia') || t.includes('computador') || t.includes('celular') || t.includes('programar') || t.includes('codigo')) return 'Posso ajudar com tecnologia e programação. Diga o que você quer fazer e, se houver um erro, envie a mensagem do erro para eu analisar. 💻';
+  if (t.includes('tecnologia') || t.includes('computador') || t.includes('celular') || t.includes('programar') || t.includes('codigo')) return 'Posso ajudar com tecnologia e programação. Diga o que você quer fazer e, se houver um erro, envie a mensagem do erro. 💻';
   if (t.includes('jogo') || t.includes('games')) return 'Posso ajudar com estratégias, configurações, ideias de jogos e explicações sobre mecânicas. 🎮';
-  if (t.includes('ajuda') || t === 'comandos') return 'Comandos que entendo: “que horas são”, “qual a data”, “quanto é 25 vezes 4”, “meu nome é...”, “moro em...”, “conte uma piada”, “quero estudar” e “ajuda”.';
-  if (/^(quanto e|calcule|calcula|qual e o resultado de)\b/.test(t)) {
-    const result = safeCalc(text);
-    if (result !== null) return `O resultado é ${result}. 🧮`;
-  }
-  if (t.includes('bom') && (t.includes('trabalho') || t.includes('emprego'))) return 'Uma boa estratégia é identificar uma habilidade que você já tem, melhorar essa habilidade e procurar oportunidades compatíveis. Se quiser, posso ajudar a montar um plano.';
-  if (t.includes('ideia') || t.includes('ideias')) return 'Claro! Posso gerar ideias para projetos, jogos, vídeos, estudos, sites e conteúdo. Diga o tema e eu monto algumas opções. 💡';
-  if (t.includes('como fazer') || t.includes('me ensina')) return 'Claro. Diga exatamente o que você quer aprender e eu explico passo a passo, começando pelo mais simples. 🤵';
-  if (t.includes('obrigado') || t.includes('obrigada')) return 'Sempre às ordens, senhor. 🤵';
-
-  return 'Entendi. Ainda estou funcionando sem uma IA externa, então não tenho conhecimento geral ilimitado. Mas posso tentar ajudar com cálculos, estudos, tecnologia, ideias, jogos, data, hora e comandos. Se você me disser o objetivo, eu tento dividir a tarefa em passos. 🧠';
+  if (t.includes('ajuda') || t === 'comandos') return 'Comandos: “que horas são”, “qual a data”, “quanto é 25 vezes 4”, “meu nome é...”, “moro em...”, “conte uma piada”, “quero estudar” e “ajuda”.';
+  if (/^(quanto e|calcule|calcula|qual e o resultado de)\b/.test(t)) { const result = safeCalc(text); if (result !== null) return `O resultado é ${result}. 🧮`; }
+  if (t.includes('ideia') || t.includes('ideias')) return 'Claro! Posso gerar ideias para projetos, jogos, vídeos, estudos, sites e conteúdo. 💡';
+  if (t.includes('como fazer') || t.includes('me ensina')) return 'Claro. Diga exatamente o que você quer aprender e eu explico passo a passo. 🤵';
+  return 'Entendi. Estou no modo local porque a IA externa não está configurada ou ficou indisponível. Posso ajudar com cálculos, estudos, tecnologia, ideias, jogos, data e hora.';
 }
 
-app.post('/api/chat', (req, res) => {
+async function externalReply(messages, session) {
+  if (!AI_KEY) return null;
+  const recent = messages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').slice(-12);
+  const facts = memory.get(session) || {};
+  const system = `Você é Alfred, um mordomo virtual brasileiro: educado, útil, direto e amigável. Responda em português do Brasil. Não diga que é humano. Ajude em estudos, programação, tecnologia, ideias e conversas comuns. Seja conciso quando a pergunta for simples. Memórias desta sessão: nome=${facts.name || 'não informado'}, cidade=${facts.city || 'não informada'}.`;
+  const payload = {
+    model: AI_MODEL,
+    messages: [{ role: 'system', content: system }, ...recent],
+    temperature: 0.7,
+    max_tokens: 700
+  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${AI_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.APP_URL || 'https://alfredo-mordomo-1.onrender.com',
+        'X-Title': 'Alfredo Mordomo'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const reply = data?.choices?.[0]?.message?.content;
+    return typeof reply === 'string' && reply.trim() ? reply.trim() : null;
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.post('/api/chat', async (req, res) => {
   try {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
@@ -99,7 +126,10 @@ app.post('/api/chat', (req, res) => {
     const last = messages.slice().reverse().find(m => m && m.role === 'user' && typeof m.content === 'string');
     if (!last || !last.content.trim()) return res.status(400).json({ error: 'Envie uma mensagem.' });
     const session = String(ip);
-    res.json({ reply: makeReply(last.content.slice(0, 4000), session) });
+    rememberFacts(last.content.slice(0, 4000), session);
+
+    const aiReply = await externalReply(messages, session);
+    res.json({ reply: aiReply || localReply(last.content.slice(0, 4000), session), ai: Boolean(aiReply) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Não foi possível responder agora.' });
@@ -107,4 +137,4 @@ app.post('/api/chat', (req, res) => {
 });
 
 app.use((req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(PORT, '0.0.0.0', () => console.log(`Alfred gratuito v3 rodando na porta ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Alfred v4 rodando na porta ${PORT}`));
