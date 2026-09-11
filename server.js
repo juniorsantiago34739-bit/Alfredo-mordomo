@@ -45,5 +45,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(PORT, () => console.log(`Alfred rodando na porta ${PORT}`));
+// Fallback for all non-API routes. Using app.use avoids Express 5 wildcard route syntax errors.
+app.use((req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+app.listen(PORT, '0.0.0.0', () => console.log(`Alfred rodando na porta ${PORT}`));
